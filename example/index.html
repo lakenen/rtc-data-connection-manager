@@ -1,6 +1,12 @@
 <!DOCTYPE html>
 <html>
 <body>
+    <style>
+    .hide {
+        display: none;
+    }
+    </style>
+    <button class="need-peer-btn hide">Request Peer</button>
     <div class="buttons"></div>
     <div class="connected"></div>
     <pre class="messages"></pre>
@@ -8,80 +14,24 @@
     <script type="text/javascript" src="/rtc-data-connection-manager.js"></script>
     <script type="text/javascript">
         var DataConnectionManager = require('rtc-data-connection-manager');
-
         var dm = new DataConnectionManager();
         var connectedEl = document.querySelector('.connected');
 
-        function WebSocketRelay(socket, toId) {
-            this.on = function (name, handler) {
-                socket.on.call(socket, '__relay__:' + name, handler);
-            };
-            this.emit = function (name, data) {
-                socket.emit('msg', toId, '__relay__:' + name, data);
-            };
-        }
-
         function handleServerPeer(socket, id, offer) {
-            var relay = new WebSocketRelay(socket, id);
+            var relay = new DataConnectionManager.relays.WebSocketRelay(socket, id);
             dm.createPeer(relay, id, offer);
         }
 
-        dm.on('peerupdate', function (peers) {
-            var buttons = document.querySelector('.buttons');
-            buttons.innerHTML = '';
-
-            peers.forEach(function (peer) {
-                var peerpeers = peer.peers;
-                peerpeers.forEach(function (peerpeer) {
-                    if (peerpeer.id === dm.id) return;
-                    if (dm.getPeer(peerpeer.id)) return;
-                    var btn = document.createElement('button');
-                    btn.innerText = 'connect to ' + peerpeer.id;
-                    btn.onclick = function () {
-                        var p = dm.getPeer(peer.id);
-                        btn.parentNode.removeChild(btn);
-                        if (p) {
-                            p.createBridge(peerpeer.id);
-                        } else {
-                            console.log('peer '+p.id+' is gone');
-                        }
-                    };
-                    buttons.appendChild(btn);
-                });
-            });
-        });
-
-        dm.on('connect', function (peer) {
-            var el = document.createElement('span');
-            var btn = document.createElement('button');
-            btn.onclick = function () {
-                peer.disconnect();
-                btn.parentNode.removeChild(btn);
-            };
-            el.innerText = peer.id;
-            btn.innerText = 'disconnect';
-            el.appendChild(btn);
-            el.classList.add('id-' + peer.id);
-            connectedEl.appendChild(el);
-        });
-
-        dm.on('disconnect', function (id) {
-            var el = document.querySelector('.id-' + id);
-            if (el) {
-                el.parentNode.removeChild(el);
-            }
-        });
-
-        dm.on('message', function (data) {
-            var messagesEl = document.querySelector('.messages');
-            messagesEl.innerText += data + '\n';
-        });
-
         function init(location) {
-            console.log(location);
             dm.location = location;
 
             var socket = io.connect();
+            var needPeerBtn = document.querySelector('.need-peer-btn');
+
+            needPeerBtn.onclick = function () {
+                socket.emit('need-peer');
+            };
+
             socket.on('id', function (id) {
                 dm.id = id;
                 document.title = id;
@@ -91,6 +41,60 @@
             });
             socket.on('__relay__:offer', function (offer, id) {
                 handleServerPeer(socket, id, offer);
+            });
+
+            dm.on('peerupdate', function (peers) {
+                var buttons = document.querySelector('.buttons');
+                buttons.innerHTML = '';
+
+                peers.forEach(function (peer) {
+                    var peerpeers = peer.peers;
+                    peerpeers.forEach(function (peerpeer) {
+                        if (peerpeer.id === dm.id) return;
+                        if (dm.getPeer(peerpeer.id)) return;
+                        var btn = document.createElement('button');
+                        btn.innerText = 'connect to ' + peerpeer.id;
+                        btn.onclick = function () {
+                            var p = dm.getPeer(peer.id);
+                            btn.parentNode.removeChild(btn);
+                            if (p) {
+                                p.createBridge(peerpeer.id);
+                            }
+                        };
+                        buttons.appendChild(btn);
+                    });
+                });
+            });
+
+            dm.on('connect', function (peer) {
+                needPeerBtn.classList.toggle('hide', true);
+                var el = document.createElement('span');
+                var btn = document.createElement('button');
+                btn.onclick = function () {
+                    peer.disconnect();
+                    btn.parentNode.removeChild(btn);
+                };
+                el.innerText = peer.id;
+                btn.innerText = 'disconnect';
+                el.appendChild(btn);
+                el.classList.add('id-' + peer.id);
+                connectedEl.appendChild(el);
+            });
+
+            dm.on('disconnect', function (id) {
+                var el = document.querySelector('.id-' + id);
+                if (el) {
+                    el.parentNode.removeChild(el);
+                }
+                console.log(dm.peers);
+                if (dm.getPeers().length === 0) {
+                    needPeerBtn.classList.toggle('hide', false);
+                }
+            });
+
+            dm.on('message', function (data) {
+                var messagesEl = document.querySelector('.messages');
+                messagesEl.innerText += data + '\n';
             });
         }
         init({ foo: 'bar' });

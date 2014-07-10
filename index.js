@@ -7,8 +7,29 @@ function DataConnectionRelay(dc, toId) {
     this.on = function (name, handler) {
         dc.on.call(dc, '__relay__:' + name, handler);
     };
+    this.off = function () {
+        dc.off.apply(dc, arguments);
+    };
     this.emit = function (name, data) {
         dc.send('__relay__:' + name, data, toId);
+    };
+}
+
+function WebSocketRelay(socket, toId) {
+    var ee = new EventEmitter();
+    var relay = this;
+    this.on = function (name, handler) {
+        socket.on.call(socket, '__relay__:' + name, function () {
+            var args = [].slice.call(arguments);
+            ee.emit.apply(ee, [name].concat(args));
+        });
+        ee.on(name, handler);
+    };
+    this.off = function () {
+        ee.off.apply(ee, arguments);
+    };
+    this.emit = function (name, data) {
+        socket.emit('msg', toId, '__relay__:' + name, data);
     };
 }
 
@@ -111,6 +132,10 @@ DataConnectionManager.prototype.createPeer = function (relay, id, offer) {
     var dm = this,
         peer,
         peers = this.peers;
+
+
+    log('attempting connection to peer', id, 'with offer =', !!offer);
+
     if (!id) {
         log('bad id', id);
         return;
@@ -120,7 +145,6 @@ DataConnectionManager.prototype.createPeer = function (relay, id, offer) {
         return;
     }
 
-    log('making connection to peer', id, 'with offer =', !!offer);
     var sdc = new SimpleDataConnection(relay, offer);
     peer = new Peer(this, sdc, id);
     peer.initiated = !offer;
@@ -142,10 +166,11 @@ DataConnectionManager.prototype.createPeer = function (relay, id, offer) {
     });
     sdc.on('close', function () {
         log('disconnected from', id);
-        dm.emit('disconnect', id);
         peer.connected = false;
         peer = sdc = null;
         delete peers[id];
+        dm.emit('disconnect', id);
+        updatePeers();
     });
     sdc.on('message', function (data) {
         log('--------------------------------');
@@ -208,4 +233,7 @@ DataConnectionManager.prototype.createPeer = function (relay, id, offer) {
 };
 
 module.exports = DataConnectionManager;
-module.exports.relay = DataConnectionRelay;
+module.exports.relays = {
+    DataConnectionRelay: DataConnectionRelay,
+    WebSocketRelay: WebSocketRelay
+};
