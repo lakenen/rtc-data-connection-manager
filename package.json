@@ -1,0 +1,25 @@
+{
+  "name": "rtc-data-connection-manager",
+  "version": "0.0.0",
+  "description": "Manage simple RTC data connections",
+  "author": "Cameron Lakenen <cameron@lakenen.com>",
+  "main": "index.js",
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/lakenen/rtc-data-connection-manager.git"
+  },
+  "license": {
+    "type": "MIT",
+    "url": "https://raw.githubusercontent.com/lakenen/rtc-data-connection-manager/master/LICENSE"
+  },
+  "bugs": {
+    "url": "https://github.com/lakenen/rtc-data-connection-manager/issues"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "dependencies": {
+    "eemitter": "^0.2.0",
+    "lodash": "^2.4.1"
+  }
+}
