@@ -9,7 +9,7 @@ server.listen(9990);
 
 io.sockets.on('connection', function (socket) {
     if (io.sockets.clients().length > 1) {
-        socket.emit('peer', getRandomClientId(socket));
+        sendPeer(socket);
     }
     socket.on('msg', function (to, name, data) {
         var client = io.sockets.sockets[to];
@@ -17,7 +17,14 @@ io.sockets.on('connection', function (socket) {
             client.emit(name, data, socket.id);
         }
     });
+    socket.on('need-peer', function () {
+        sendPeer(socket);
+    });
 });
+
+function sendPeer(socket) {
+    socket.emit('peer', getRandomClientId(socket));
+}
 
 function getRandomClientId(me) {
     var clients = io.sockets.clients().filter(function (s) {

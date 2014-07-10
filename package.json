@@ -19,6 +19,7 @@
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "dependencies": {
+    "deep-equal": "^0.2.1",
     "eemitter": "^0.2.0",
     "lodash": "^2.4.1"
   }

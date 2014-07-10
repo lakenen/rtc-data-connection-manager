@@ -1,6 +1,7 @@
 var SimpleDataConnection = require('simple-rtc-data-connection'),
     EventEmitter = require('eemitter'),
-    _ = require('lodash');
+    _ = require('lodash'),
+    equal = require('deep-equal');
 
 function DataConnectionRelay(dc, toId) {
     this.on = function (name, handler) {
@@ -15,11 +16,12 @@ function log() {
     console.log.apply(console, arguments);
 }
 
-function Peer(dataConnection, id) {
+function Peer(dataConnectionManager, dataConnection, id) {
     var peer = this;
     this.id = id;
     this.peers = [];
     this.location = null;
+    this.dataConnectionManager = dataConnectionManager;
     this.dataConnection = dataConnection;
 }
 Peer.prototype = Object.create(EventEmitter.prototype);
@@ -37,19 +39,48 @@ Peer.prototype.serialize = function () {
     return {
         id: this.id,
         location: this.location,
-        peers: this.peers
+        peers: this.peers.map(function (peer) {
+            return  {
+                id: peer.id,
+                location: peer.location,
+                peers: peer.peers.map(function (peer) {
+                    return peer.id;
+                })
+            };
+        })
     };
+};
+Peer.prototype.createBridge = function (id) {
+    var relay;
+    if (_.contains(_.pluck(this.peers, 'id'), id)) {
+        relay = new DataConnectionRelay(this.dataConnection, id);
+        this.dataConnectionManager.createPeer(relay, id);
+    } else {
+        console.error('no peer with id', id);
+        return false;
+    }
 };
 
 function DataConnectionManager() {
     this.peers = {};
+    this.location = {};
 }
 
+DataConnectionManager.prototype = Object.create(EventEmitter.prototype);
+DataConnectionManager.prototype.contructor = DataConnectionManager;
 DataConnectionManager.prototype.broadcast = function () {
     var args = arguments;
     _.each(this.peers, function (peer) {
         peer.send.apply(peer, args);
     });
+};
+DataConnectionManager.prototype.send = function () {
+    var peerId = arguments[0],
+        peer = this.peers[peerId],
+        args = arguments.slice(1);
+    if (peer) {
+        peer.send.apply(peer, args);
+    }
 };
 
 DataConnectionManager.prototype.getPeer = function (id) {
@@ -81,17 +112,26 @@ DataConnectionManager.prototype.createPeer = function (relay, id, offer) {
 
     log('making connection to peer', id, 'with offer =', !!offer);
     var sdc = new SimpleDataConnection(relay, offer);
-    peer = new Peer(sdc, id);
+    peer = new Peer(this, sdc, id);
     peers[id] = peer;
 
+    function updatePeers() {
+        var peerInfo = dm.getPeerInfo();
+        dm.emit('peerupdate', peerInfo);
+        dm.broadcast('peers', peerInfo);
+    }
+
     sdc.on('open', function () {
-        log('-----------------CONNECTED TO', id);
+        log('CONNECTED TO', id);
         peer.send('message', 'HAI');
         peer.send('location', dm.location);
-        dm.broadcast('peers', dm.getPeerInfo());
+        dm.emit('connected', peer);
+        updatePeers();
     });
     sdc.on('close', function () {
         log('disconnected from', id);
+        dm.emit('disconnected', id);
+        peer = sdc = null;
         delete peers[id];
     });
     sdc.on('message', function (data) {
@@ -101,26 +141,34 @@ DataConnectionManager.prototype.createPeer = function (relay, id, offer) {
     });
 
     sdc.on('peers', function (peerList) {
-        log('got updated peers from', id, peerList);
-        var peerInfo = dm.getPeerInfo();
-        if (_.difference(peerInfo.peers, peerList).length) {
+        if (!equal(peer.peers, peerList)) {
+            console.log('new peer info found');
             peer.peers = peerList;
-            dm.broadcast('peers', dm.getPeerInfo());
+            updatePeers();
         }
     });
+
     sdc.on('location', function (location) {
         log('got location from', id, location);
         peer.location = location;
-        dm.broadcast('peers', dm.getPeerInfo());
+        updatePeers();
+    });
+
+    sdc.on('offer', function (offer, peerId) {
+        var relay;
+        log('got offer for', peerId, 'through', id);
+        relay = new DataConnectionRelay(sdc, peerId);
+        dm.createPeer(relay, peerId, offer);
     });
 
 
+    // Relay stuff --------
 
     sdc.on('__relay__:offer', function (offer, peerId) {
         log('got offer for', peerId, 'from', id);
         if (peers[peerId]) {
             log('forwarding offer to', peerId);
-            peers[peerId].send('__relay__:offer', offer, id);
+            peers[peerId].send('offer', offer, id);
         } else {
             log('I don\'t know', peerId, ' FAIL');
         }
