@@ -1,4 +1,4 @@
-var SimpleDataConnection = require('simple-rtc-dataconnection'),
+var SimpleDataConnection = require('simple-rtc-data-connection'),
     EventEmitter = require('eemitter'),
     _ = require('lodash');
 
