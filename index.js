@@ -23,6 +23,7 @@ function Peer(dataConnectionManager, dataConnection, id) {
     this.location = null;
     this.dataConnectionManager = dataConnectionManager;
     this.dataConnection = dataConnection;
+    this.connected = false;
 }
 Peer.prototype = Object.create(EventEmitter.prototype);
 Peer.prototype.contructor = Peer;
@@ -32,6 +33,9 @@ Peer.prototype.getRelay = function (toId) {
 Peer.prototype.isConnected = function () {
     return this.dataConnection.connected;
 };
+Peer.prototype.disconnect = function () {
+    return this.dataConnection.close();
+};
 Peer.prototype.send = function () {
     this.dataConnection.send.apply(this.dataConnection, arguments);
 };
@@ -39,6 +43,7 @@ Peer.prototype.serialize = function () {
     return {
         id: this.id,
         location: this.location,
+        initiated: this.initiated,
         peers: this.peers.map(function (peer) {
             return  {
                 id: peer.id,
@@ -53,11 +58,14 @@ Peer.prototype.serialize = function () {
 Peer.prototype.createBridge = function (id) {
     var relay;
     if (_.contains(_.pluck(this.peers, 'id'), id)) {
+        if (this.dataConnectionManager.getPeer(id)) {
+            console.log('already have a connection to', id);
+            return;
+        }
         relay = new DataConnectionRelay(this.dataConnection, id);
         this.dataConnectionManager.createPeer(relay, id);
     } else {
         console.error('no peer with id', id);
-        return false;
     }
 };
 
@@ -88,7 +96,9 @@ DataConnectionManager.prototype.getPeer = function (id) {
 };
 
 DataConnectionManager.prototype.getPeers = function () {
-    return _.values(this.peers);
+    return _.values(this.peers).filter(function (peer) {
+        return peer.connected;
+    });
 };
 
 DataConnectionManager.prototype.getPeerInfo = function () {
@@ -113,6 +123,7 @@ DataConnectionManager.prototype.createPeer = function (relay, id, offer) {
     log('making connection to peer', id, 'with offer =', !!offer);
     var sdc = new SimpleDataConnection(relay, offer);
     peer = new Peer(this, sdc, id);
+    peer.initiated = !offer;
     peers[id] = peer;
 
     function updatePeers() {
@@ -123,14 +134,16 @@ DataConnectionManager.prototype.createPeer = function (relay, id, offer) {
 
     sdc.on('open', function () {
         log('CONNECTED TO', id);
-        peer.send('message', 'HAI');
+        peer.connected = true;
+        // peer.send('message', 'HAI');
         peer.send('location', dm.location);
-        dm.emit('connected', peer);
+        dm.emit('connect', peer);
         updatePeers();
     });
     sdc.on('close', function () {
         log('disconnected from', id);
-        dm.emit('disconnected', id);
+        dm.emit('disconnect', id);
+        peer.connected = false;
         peer = sdc = null;
         delete peers[id];
     });
@@ -138,18 +151,19 @@ DataConnectionManager.prototype.createPeer = function (relay, id, offer) {
         log('--------------------------------');
         log('message from', id, data);
         log('--------------------------------');
+        dm.emit('message', data);
     });
 
     sdc.on('peers', function (peerList) {
         if (!equal(peer.peers, peerList)) {
-            console.log('new peer info found');
+            // console.log('new peer info found');
             peer.peers = peerList;
             updatePeers();
         }
     });
 
     sdc.on('location', function (location) {
-        log('got location from', id, location);
+        // log('got location from', id, location);
         peer.location = location;
         updatePeers();
     });
@@ -165,27 +179,27 @@ DataConnectionManager.prototype.createPeer = function (relay, id, offer) {
     // Relay stuff --------
 
     sdc.on('__relay__:offer', function (offer, peerId) {
-        log('got offer for', peerId, 'from', id);
+        // log('got offer for', peerId, 'from', id);
         if (peers[peerId]) {
-            log('forwarding offer to', peerId);
+            // log('forwarding offer to', peerId);
             peers[peerId].send('offer', offer, id);
         } else {
             log('I don\'t know', peerId, ' FAIL');
         }
     });
     sdc.on('__relay__:answer', function (answer, peerId) {
-        log('got answer for', peerId, 'from', id);
+        // log('got answer for', peerId, 'from', id);
         if (peers[peerId]) {
-            log('forwarding answer to', peerId);
+            // log('forwarding answer to', peerId);
             peers[peerId].send('__relay__:answer', answer, id);
         } else {
             log('I don\'t know', peerId, ' FAIL');
         }
     });
     sdc.on('__relay__:candidate', function (candidate, peerId) {
-        log('got candidate for', peerId, 'from', id);
+        // log('got candidate for', peerId, 'from', id);
         if (peers[peerId]) {
-            log('forwarding candidate to', peerId);
+            // log('forwarding candidate to', peerId);
             peers[peerId].send('__relay__:candidate', candidate, id);
         } else {
             log('I don\'t know', peerId, ' FAIL');

@@ -8,6 +8,7 @@ app.use(express.static(__dirname));
 server.listen(9990);
 
 io.sockets.on('connection', function (socket) {
+    socket.emit('id', socket.id);
     if (io.sockets.clients().length > 1) {
         sendPeer(socket);
     }
