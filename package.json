@@ -23,5 +23,9 @@
     "eemitter": "^0.2.0",
     "lodash": "^2.4.1",
     "simple-rtc-data-connection": "0.0.0"
+  },
+  "devDependencies": {
+    "socket.io": "^0.9.17",
+    "socket.io-client": "^0.9.17"
   }
 }
